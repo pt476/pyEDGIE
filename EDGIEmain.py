@@ -10,7 +10,7 @@ from Functions_github import (
 def main():
     # Load Data
     metaData, waterData, cleanedMFREDdata = loadData()
-
+    # test commit
     # Define parameters
     tic = time.perf_counter()
     batteryDeg =   1     # battery degradation with outside temperature is implemented
