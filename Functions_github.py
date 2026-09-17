@@ -68,4 +68,19 @@ def loadData():
     waterData = pd.read_csv(waterData_path)
     cleanedMFREDdata = pd.read_excel(cleanedMFREDdata_path)
 
+    # Rename headers
+    metaData= metaData.rename(columns={     # Rename column headers in metaData
+            "PeakRatio"             :   "peakRatio",
+            "HousingUnits"          :   "housingUnits",
+            "Attached home %"       :   "percentAttached",
+            "Detached home %"       :   "percentDetached",
+            "county_name"           :   "countyName",
+            "1%_Cooling Temp. (¡F)" :   "coolingTemp",
+            "99%_Heating Temp. (¡F)":   "heatingTemp",
+            "ElectricWH%"           :   "electricWH",
+            "Mean Commuting Time"   :   "oneWayCommuteTime",
+            "Detached floor area"   :   "floorAreaDetached",
+            "Attached floor area"   :   "floorAreaAttached"
+        })
+
     return metaData, waterData, cleanedMFREDdata

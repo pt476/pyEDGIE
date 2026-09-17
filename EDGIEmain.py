@@ -10,7 +10,7 @@ from Functions_github import (
 def main():
     # Load Data
     metaData, waterData, cleanedMFREDdata = loadData()
-    # test commit
+
     # Define parameters
     tic = time.perf_counter()
     batteryDeg =   1     # battery degradation with outside temperature is implemented
@@ -28,56 +28,56 @@ def main():
     #t = (0:dt:tf)'      # time vector, hours ### Adapt this for python
     FutureHeadroom = 1.2 # Future headroom allowance multiplier 
 
-    states = {                              # List of states
-        ('MN','Minnesota'),
-        #  ('DC','District_of_Columbia'),
-        #  ('AZ','Arizona'),
-        #  ('AL','Alabama'),
-        #  ('WI','Wisconsin'),
-        #  ('NC','North_Carolina'),
-        #  ('TX','Texas'),
-        #  ('DE','Delaware'),
-        #  ('CA','California'),
-        #  ('GA','Georgia'),
-        #  ('ID','Idaho'),
-        #  ('IL','Illinois'),
-        #  ('IN','Indiana'),
-        #  ('KY','Kentucky'),
-        #  ('LA','Louisiana'),
-        #  ('ME','Maine'),
-        #  ('MD','Maryland'),
-        #  ('MA','Massachusetts'),
-        #  ('MI','Michigan'),
-        #  ('MS','Mississippi'),
-        #  ('MO','Missouri'),
-        #  ('NE','Nebraska'),
-        #  ('NH','New_Hampshire'),
-        #  ('NJ','New_Jersey'),
-        #  ('NM','New_Mexico'),
-        #  ('NY','New_York'),
-        #  ('ND','North_Dakota'),
-        #  ('OH','Ohio'),
-        #  ('OK','Oklahoma'),
-        #  ('OR','Oregon'),
-        #  ('PA','Pennsylvania'),
-        #  ('RI','Rhode_Island'),
-        #  ('SC','South_Carolina'),
-        #  ('SD','South_Dakota'),
-        #  ('TN','Tennessee'),
-        #  ('UT','Utah'),
-        #  ('VT','Vermont'),
-        #  ('VA','Virginia'),
-        #  ('WA','Washington'),
-        #  ('WV','West_Virginia'),
-        #  ('WY','Wyoming'),
-        #  ('FL','Florida'),
-        #  ('CT','Connecticut'),
-        #  ('NV','Nevada'),
-        #  ('AR','Arkansas'),
-        #  ('KS','Kansas'),
-        #  ('MT','Montana'),
-        #  ('CO','Colorado'),
-        #  ('IA','Iowa'),
+    states = {                              # Dictionary of states
+        'MN':'Minnesota',
+        #  'DC':'District_of_Columbia',
+        #  'AZ':'Arizona',
+        #  'AL':'Alabama',
+        #  'WI':'Wisconsin',
+        #  'NC':'North_Carolina',
+        #  'TX':'Texas',
+        #  'DE':'Delaware',
+        #  'CA':'California',
+        #  'GA':'Georgia',
+        #  'ID':'Idaho',
+        #  'IL':'Illinois',
+        #  'IN':'Indiana',
+        #  'KY':'Kentucky',
+        #  'LA':'Louisiana',
+        #  'ME':'Maine',
+        #  'MD':'Maryland',
+        #  'MA':'Massachusetts',
+        #  'MI':'Michigan',
+        #  'MS':'Mississippi',
+        #  'MO':'Missouri',
+        #  'NE':'Nebraska',
+        #  'NH':'New_Hampshire',
+        #  'NJ':'New_Jersey',
+        #  'NM':'New_Mexico',
+        #  'NY':'New_York',
+        #  'ND':'North_Dakota',
+        #  'OH':'Ohio',
+        #  'OK':'Oklahoma',
+        #  'OR':'Oregon',
+        #  'PA':'Pennsylvania',
+        #  'RI':'Rhode_Island',
+        #  'SC':'South_Carolina',
+        #  'SD':'South_Dakota',
+        #  'TN':'Tennessee',
+        #  'UT':'Utah',
+        #  'VT':'Vermont',
+        #  'VA':'Virginia',
+        #  'WA':'Washington',
+        #  'WV':'West_Virginia',
+        #  'WY':'Wyoming',
+        #  'FL':'Florida',
+        #  'CT':'Connecticut',
+        #  'NV':'Nevada',
+        #  'AR':'Arkansas',
+        #  'KS':'Kansas',
+        #  'MT':'Montana',
+        #  'CO':'Colorado',
+        #  'IA':'Iowa',
         }
 
     headers = [                             # Final results headers
@@ -107,22 +107,8 @@ def main():
         'Commercial Cost',
         'TotaCostCommercial'
         ]
-
-    metaData= metaData.rename(columns={     # Rename column headers in metaData
-        "PeakRatio"             :   "peakRatio",
-        "HousingUnits"          :   "housingUnits",
-        "Attached home %"       :   "percentAttached",
-        "Detached home %"       :   "percentDetached",
-        "county_name"           :   "countyName",
-        "1%_Cooling Temp. (¡F)" :   "coolingTemp",
-        "99%_Heating Temp. (¡F)":   "heatingTemp",
-        "ElectricWH%"           :   "electricWH",
-        "Mean Commuting Time"   :   "oneWayCommuteTime",
-        "Detached floor area"   :   "floorAreaDetached",
-        "Attached floor area"   :   "floorAreaAttached"
-    })
    
-    for stateAbbr, stateName in states:
+    for stateAbbr, stateName in states.items():
         cityData = metaData[metaData["state_id"].str.upper() == stateAbbr] # Extract data for current city
         rows=[] # Defining rows of city data
 
