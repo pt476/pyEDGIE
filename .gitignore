@@ -9374,3 +9374,5 @@ InputFiles_github/8ton_T_heating.csv
 InputFiles_github/cleanedMFREDdata.xlsx
 InputFiles_github/DHWEventGeneratorOutput.csv
 InputFiles_github/metaData.xlsx
+Notes.txt
+requirements.txt
