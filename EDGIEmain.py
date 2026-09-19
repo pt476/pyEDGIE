@@ -1,10 +1,11 @@
 import os
 import time
+from datetime import datetime
 import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    trirnd, Rcalc, loadData
+    trirnd, Rcalc, loadData, importWeather
 )
     
 def main():
@@ -25,8 +26,13 @@ def main():
     tf = (nDays) * 24    # total hours
     dt = 1               # time step, h
     K = tf / dt          # number of time steps
-    #t = (0:dt:tf)'      # time vector, hours ### Adapt this for python
+    t = np.arange(0, tf, dt) # time span, h
     FutureHeadroom = 1.2 # Future headroom allowance multiplier 
+
+    # Time range masking
+    startTime = datetime(2018, 1, 1, 0, 0, 0) - pd.Timedelta(days=warmupDays)
+    endTime = datetime(2019, 1, 1, 0, 0, 0)
+    weatherTime = pd.date_range(start=startTime, end=endTime, freq=f'{dt}h')
 
     states = {                              # Dictionary of states
         'MN':'Minnesota',
@@ -109,8 +115,10 @@ def main():
         ]
    
     for stateAbbr, stateName in states.items():
-        cityData = metaData[metaData["state_id"].str.upper() == stateAbbr] # Extract data for current city
+        cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         rows=[] # Defining rows of city data
+        
+        cityData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, len(cityData), 1), 2).flatten()  # flatten (n,1) -> (n,) to match DataFrame column shape
 
         #for city in cityData.itertuples(): 
         for city in cityData.iloc[0:3].itertuples():    # debug line to test the first 3 cities
@@ -126,9 +134,9 @@ def main():
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,n1)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
-
-
-
+            
+            thetaFull, solarFull = importWeather(stateName, city.countyName, t)
+            
             
 
 
@@ -136,17 +144,36 @@ def main():
 
             # Compile results into dataTable
             rows.append({
-                "State": stateName,
-                "County" : city.countyName,
-                "City": city.city_ascii,
-                "lat": city.lat,
-                "lng": city.lng,
-                "R_detached": RValueDetached_mean,
-                "R_attached": RvalueAttached_mean,
-                "Design Temp Heating (F)": city.heatingTemp,
-                "Design Temp Cooling (F)": city.coolingTemp
+                "State"                             : stateName,
+                "County"                            : city.countyName,
+                "City"                              : city.city_ascii,
+                "lat"                               : city.lat,
+                "lng"                               : city.lng,
+                "R_detached"                        : RValueDetached_mean,
+                "R_attached"                        : RvalueAttached_mean,
+                "Design Temp Heating (F)"           : city.heatingTemp,
+                "Design Temp Cooling (F)"           : city.coolingTemp,
+                #"TodaysPeak  (MW)"                 : 
+                #"Electrified Winter peak (MW)"     :
+                #"Electrified Summer Peak (MW)"     :
+                #"Change in electrified peak (MW)"  :
+                #"Today - Future (MW)"              :
+                #"Cost"                             :
+                "zone"                              : city.Zone,
+                #"TotalCost"                        :
+                "HousingUnits"                      : city.housingUnits,
+                "headroom"                          : city.currentHeadroom
+                #"CommercialTodaysPeak (MW)"        :
+                #"CommercialWinterPeak (MW)"        :
+                #"CommercialSummerPeak (MW)"        :
+                #"UpgradeReqCommercial (MW)"        :
+                #"Commercial Cost"                  :
+                #"TotaCostCommercial"               :
             })
 
+            print(f'State: {stateName}, County: {city.countyName} City: {city.city_ascii}')
+            toc = time.perf_counter()
+            print(f"Elapsed time is {toc-tic:.3f} seconds.")
 
         # Export results
         dataTable = pd.DataFrame(rows,columns=headers)
@@ -155,7 +182,7 @@ def main():
         dataTable.to_excel(outputPath, index=False) # If file is not writing, check if excel sheet is open. Needs to be closed
 
         toc = time.perf_counter()
-        print(f"Elapsed time is {toc-tic:.3f} seconds.")
+        print(f"Total Elapsed time is {toc-tic:.3f} seconds.")
 
 if __name__ == "__main__":
     main()
