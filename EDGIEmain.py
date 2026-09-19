@@ -11,6 +11,17 @@ from Functions_github import (
 def main():
     # Load Data
     metaData, waterData, cleanedMFREDdata = loadData()
+    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, len(metaData), 1), 2).flatten()
+
+    n = len(metaData)
+    mask = (metaData["oneWayCommuteTime"] < 24.0).to_numpy()
+
+    low  = np.where(mask, 15, 40).reshape(n, 1)
+    high = np.where(mask, 35, 60).reshape(n, 1)
+
+    metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
+    metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
+    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten()
 
     # Define parameters
     tic = time.perf_counter()
@@ -20,8 +31,8 @@ def main():
     warmupDays=2         # set number of warmup days
     nDays =7+warmupDays  # total model week length
     ti = 0               # initial time, h
-    numHomes = 1000            # number of homes (= number of HPs)
-    L = numHomes               # number of water heater
+    numHomes = 1000      # number of homes (= number of HPs)
+    L = numHomes         # number of water heater
     ft2m2 = 0.092903     # ft^2 to m^2 conversion
     tf = (nDays) * 24    # total hours
     dt = 1               # time step, h
@@ -115,20 +126,14 @@ def main():
         ]
    
     for stateAbbr, stateName in states.items():
-        cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         rows=[] # Defining rows of city data
+
+        # Process metaData for 
+        cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         
-        cityData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, len(cityData), 1), 2).flatten()  # flatten (n,1) -> (n,) to match DataFrame column shape
 
         #for city in cityData.itertuples(): 
         for city in cityData.iloc[0:3].itertuples():    # debug line to test the first 3 cities
-
-            if city.oneWayCommuteTime < 24.0:
-                commuteSpeed = trirnd(15,35,1,1)
-            else:
-                commuteSpeed = trirnd(40,60,1,1)
-
-            commuteDistance = city.oneWayCommuteTime * commuteSpeed / 60
 
             # Calculate effective thermal resistance of homes
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
