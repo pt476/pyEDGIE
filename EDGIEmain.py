@@ -11,17 +11,6 @@ from Functions_github import (
 def main():
     # Load Data
     metaData, waterData, cleanedMFREDdata = loadData()
-    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, len(metaData), 1), 2).flatten()
-
-    n = len(metaData)
-    mask = (metaData["oneWayCommuteTime"] < 24.0).to_numpy()
-
-    low  = np.where(mask, 15, 40).reshape(n, 1)
-    high = np.where(mask, 35, 60).reshape(n, 1)
-
-    metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
-    metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
-    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten()
 
     # Define parameters
     tic = time.perf_counter()

@@ -155,7 +155,7 @@ def loadData():
     waterData = pd.read_csv(waterData_path)
     cleanedMFREDdata = pd.read_excel(cleanedMFREDdata_path)
 
-    # Rename headers
+    # Process metaData
     metaData= metaData.rename(columns={     # Rename column headers in metaData
             "PeakRatio"             :   "peakRatio",
             "HousingUnits"          :   "housingUnits",
@@ -169,5 +169,14 @@ def loadData():
             "Detached floor area"   :   "floorAreaDetached",
             "Attached floor area"   :   "floorAreaAttached"
         })
+    n = len(metaData)
+    mask = (metaData["oneWayCommuteTime"] < 24.0).to_numpy() # Generate mask for commute times < 24h
+    # Define bounds for commute speed distribution
+    low  = np.where(mask, 15, 40).reshape(n, 1) 
+    high = np.where(mask, 35, 60).reshape(n, 1)
+    # Assign commuteSpeed, commuteDistance, currentHeadroom objects to metaData
+    metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
+    metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
+    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten() 
 
     return metaData, waterData, cleanedMFREDdata
