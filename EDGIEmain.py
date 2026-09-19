@@ -20,8 +20,8 @@ def main():
     warmupDays=2         # set number of warmup days
     nDays =7+warmupDays  # total model week length
     ti = 0               # initial time, h
-    n1 = 1000            # number of homes (= number of HPs)
-    L = n1               # number of water heater
+    numHomes = 1000            # number of homes (= number of HPs)
+    L = numHomes               # number of water heater
     ft2m2 = 0.092903     # ft^2 to m^2 conversion
     tf = (nDays) * 24    # total hours
     dt = 1               # time step, h
@@ -131,7 +131,7 @@ def main():
             commuteDistance = city.oneWayCommuteTime * commuteSpeed / 60
 
             # Calculate effective thermal resistance of homes
-            RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,n1)
+            RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
             
