@@ -31,7 +31,7 @@ def main():
     # Time range masking
     startTime = datetime(2018, 1, 1, 0, 0, 0) - pd.Timedelta(days=warmupDays)
     endTime = datetime(2019, 1, 1, 0, 0, 0)
-    weatherTime = pd.date_range(start=startTime, end=endTime, freq=f'{dt}h')
+    timeMap = pd.date_range(start=startTime, end=endTime, freq=f'{dt}h')
 
     states = {                              # Dictionary of states
         'MN':'Minnesota',
@@ -120,16 +120,24 @@ def main():
         # Extract data for current state 
         cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         
-   
         #for city in cityData.itertuples(): 
         for city in cityData.iloc[0:3].itertuples():    # debug line to test the first 3 cities
+
+            # Load city-specific weather data
+            thetaFull, solarFull = importWeather(stateName, city.countyName, t)
+
+            # Find representative week from temperatures in weather data
+            #tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, thetaFull) 
+            #tStartSummer, tEndSummer = getDesignWeek(city.coolingTemp, thetaFull) 
+
+            
 
             # Calculate effective thermal resistance of homes
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
 
-            thetaFull, solarFull = importWeather(stateName, city.countyName, t)
+            
 
             
 
