@@ -13,7 +13,6 @@ def main():
     metaData, waterData, cleanedMFREDdata = loadData()
 
     # Define parameters
-    tic = time.perf_counter()
     batteryDeg =   1     # battery degradation with outside temperature is implemented
     waterheater = 3      # set 1 for resistance 2 for heat pump only 3 for hybrid
     sizing = 3           # set 1 for cooling 2 for heating 3 for max of heating or cooling 
@@ -113,14 +112,15 @@ def main():
         'Commercial Cost',
         'TotaCostCommercial'
         ]
-   
-    for stateAbbr, stateName in states.items():
-        rows=[] # Defining rows of city data
 
-        # Process metaData for 
+    tic = time.perf_counter()
+    for stateAbbr, stateName in states.items():
+        finalOutput = [] # Define array for final outputs of city simulation
+
+        # Extract data for current state 
         cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         
-
+   
         #for city in cityData.itertuples(): 
         for city in cityData.iloc[0:3].itertuples():    # debug line to test the first 3 cities
 
@@ -128,16 +128,16 @@ def main():
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
-            
+
             thetaFull, solarFull = importWeather(stateName, city.countyName, t)
-            
+
             
 
 
 
 
             # Compile results into dataTable
-            rows.append({
+            finalOutput.append({
                 "State"                             : stateName,
                 "County"                            : city.countyName,
                 "City"                              : city.city_ascii,
@@ -170,7 +170,7 @@ def main():
             print(f"Elapsed time is {toc-tic:.3f} seconds.")
 
         # Export results
-        dataTable = pd.DataFrame(rows,columns=headers)
+        dataTable = pd.DataFrame(finalOutput,columns=headers)
         os.makedirs("Final", exist_ok=True)
         outputPath = os.path.join("Final", f"{stateName}.xlsx")
         dataTable.to_excel(outputPath, index=False) # If file is not writing, check if excel sheet is open. Needs to be closed
