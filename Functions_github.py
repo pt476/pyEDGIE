@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
+from datetime import datetime
 import os
+
 rng = np.random.default_rng(1)
 
 def btu2wh(x):
@@ -51,6 +53,137 @@ def trirnd(a, c, m, n):
             drawn from the specified triangular distribution.
     """
     return rng.triangular(a, (a + c) / 2.0, c, size=(m, n))
+
+def loadGlobalData(warmupDays):
+        
+    # Define paths
+    InputFiles_dir = "InputFiles_github"
+    metaData_path = os.path.join(InputFiles_dir, "metaData.xlsx")
+    waterData_path = os.path.join(InputFiles_dir, "DHWEventGeneratorOutput.csv")
+    cleanedMFREDdata_path = os.path.join(InputFiles_dir, "cleanedMFREDdata.xlsx")
+    
+    # Read data
+    metaData = pd.read_excel(metaData_path)
+    waterData = pd.read_csv(waterData_path)
+    cleanedMFREDdata = pd.read_excel(cleanedMFREDdata_path)
+
+    # Process metaData
+    metaData= metaData.rename(columns={     # Rename column headers in metaData
+            "PeakRatio"             :   "peakRatio",
+            "HousingUnits"          :   "housingUnits",
+            "Attached home %"       :   "percentAttached",
+            "Detached home %"       :   "percentDetached",
+            "county_name"           :   "countyName",
+            "1%_Cooling Temp. (¡F)" :   "coolingTemp",
+            "99%_Heating Temp. (¡F)":   "heatingTemp",
+            "ElectricWH%"           :   "electricWH",
+            "Mean Commuting Time"   :   "oneWayCommuteTime",
+            "Detached floor area"   :   "floorAreaDetached",
+            "Attached floor area"   :   "floorAreaAttached"
+        })
+    n = len(metaData)
+    mask = (metaData["oneWayCommuteTime"] < 24.0).to_numpy() # Generate mask for commute times < 24h
+    # Define bounds for commute speed distribution
+    low  = np.where(mask, 15, 40).reshape(n, 1) 
+    high = np.where(mask, 35, 60).reshape(n, 1)
+    # Assign commuteSpeed, commuteDistance, currentHeadroom objects to metaData
+    metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
+    metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
+    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten() 
+
+    cleanedMFREDdata = retimeData(cleanedMFREDdata, warmupDays, 1)
+
+    return metaData, waterData, cleanedMFREDdata
+
+def loadCityData(stateName, countyName, warmupDays):
+    # Import raw data
+    weatherData = pd.read_csv('ComStock/weather_data/' + stateName + '/' + countyName.replace(" ","_") + "_amy2018.csv", header=0)
+    baselineComStock = pd.read_csv('ComStock/baseline_merged_results/' + stateName + '/' + countyName + ".csv")
+    futureComStock = pd.read_csv('ComStock/future_merged_results/' + stateName + '/' + countyName + ".csv")
+
+    # Clean and retime data
+    weatherData = retimeData(weatherData, warmupDays, 0)
+    #baselineComStock = retimeData(baselineComStock, warmupDays, 2)
+    #futureComStock = retimeData(futureComStock, warmupDays, 2)
+
+    return weatherData, baselineComStock, futureComStock
+
+def retimeData(rawData, warmupDays, checkFile):
+    # checkFile = 0 for weather, 1 for cleanedMFREDdata, 2 for baseline/future
+
+    # Adjust time to EST (UTC-5) for cleanedMFREDdata
+    if checkFile == 0:
+        offsetTime = 1 # Offset the hour-end timestamps to hour-start timestamps NOTE NOTE NOTE NOTE NOTE
+    elif checkFile == 1:
+        offsetTime = 5  # Offset UTC to EST(=UTC=-5)
+    else:
+        offsetTime = 0
+
+    # Extract time (assumed first column) and convert to datetime format
+    timestamps = pd.to_datetime(rawData.iloc[:, 0])
+
+    # Adjust year to match weather file for non-weather data files
+    timestamps = timestamps.map(lambda d: d.replace(year=2018)) - pd.Timedelta(hours=offsetTime)
+
+    # Extract power profiles and fill missing values linearly
+    data = rawData.iloc[:, 1:].apply(pd.to_numeric, errors='coerce')
+    data = data.interpolate(method='linear', limit_direction='both')
+
+    # Create timetable (DataFrame indexed by time)
+    individual_power = pd.DataFrame(data.values, index=timestamps)
+
+    # Define master time map (Derived from weather data)
+    start_time = pd.Timestamp(2018, 1, 1) - pd.Timedelta(days=warmupDays)
+    end_time = pd.Timestamp(2019, 1, 1)
+    masterTime = pd.date_range(start=start_time, end=end_time, freq='1h')
+
+    # Retime / Resample to match weatherTime grid
+    # Combine indices, 
+    retimedData = individual_power.reindex(individual_power.index.union(masterTime))
+
+    # Filter to weather_time grid
+    retimedData = retimedData.reindex(masterTime)
+
+    # Linear interpolate any missing data
+    retimedData = interpLinear(retimedData)
+
+    # Fill 2017 warmup period using early 2018 data
+    data_filling_mask = (retimedData.index >= pd.Timestamp(2018, 1, 1)) & \
+                        (retimedData.index < pd.Timestamp(2018, 1, 1) + pd.Timedelta(days=warmupDays))
+    data_filling = retimedData.loc[data_filling_mask].values
+ 
+    idx_2017 = retimedData.index < pd.Timestamp(2018, 1, 1)
+
+    num_2017_rows = idx_2017.sum()
+    if len(data_filling) > 0:
+        repeated_filling = np.tile(data_filling, (int(np.ceil(num_2017_rows / len(data_filling))), 1))[:num_2017_rows]
+        retimedData.loc[idx_2017] = repeated_filling
+
+    retimedData = interpLinear(retimedData) # Final linear interpolation
+    retimedData = retimedData.round(4) # Align all values to 4 decimal places
+
+    return retimedData
+
+def interpLinear(data):
+    value_cols = data.columns  # all columns are data now, since date is the index
+    x_numeric = data.index.astype('int64') / 1e9  # datetime -> seconds, for arithmetic
+    
+    for col in value_cols:
+        col_idx = data.columns.get_loc(col)
+        
+        for i in range(2, len(data)):
+            if pd.isna(data.iloc[i, col_idx]):
+                x1, y1 = x_numeric[i-2], data.iloc[i-2, col_idx]
+                x2, y2 = x_numeric[i-1], data.iloc[i-1, col_idx]
+                x_new = x_numeric[i]
+                
+                if pd.isna(y1) or pd.isna(y2):
+                    continue  # not enough valid prior data yet
+                
+                slope = (y2 - y1) / (x2 - x1)
+                data.iloc[i, col_idx] = y1 + slope * (x_new - x1)
+    
+    return data
 
 def Rcalc(Uwall,Uwindow,AreaDetached,AreaAttached,n1):
     """Calculates thermal resistance (R-values) and converted areas for detached and attached buildings.
@@ -104,79 +237,4 @@ def Rcalc(Uwall,Uwindow,AreaDetached,AreaAttached,n1):
     RvalueDetached = 1/(mdotCp/1000 + Uwall*AwDetached/1000 + Ur*AreaRoofDetached/1000)
     RvalueAttached = 1/(mdotCp/1000 + Uwall*AwAttached/1000 + Ur*AreaRoofAttached/1000)
 
-    return RvalueDetached, RvalueAttached, AreaDetached, AreaAttached
-
-def importWeather(stateName, countyName, t_span):
-    # --- import raw data ---
-    weather_data = pd.read_csv('ComStock/weather_data/' + stateName + '/' + countyName.replace(" ","_") + "_amy2018.csv")
-
-    # Extract data and convert units
-    weather_data['timestamp'] = pd.to_datetime(weather_data.iloc[:,0])
-
-    # Fix year only if it's before 2000 to avoid overflow issues
-    mask = weather_data['timestamp'].dt.year < 2000
-    weather_data.loc[mask, 'timestamp'] += pd.DateOffset(years=2000)
-
-    #offsetGMT = -5
-    #weather_data['timestamp'] += pd.to_timedelta(offsetGMT, unit='h')
-
-    # Extract data and convert units
-    temperature = weather_data.iloc[:, 1]  # outdoor air temperature, C
-    shortwave = weather_data.iloc[:, 5] / 1000  # total horizontal shortwave irradiance, kW/m^2
-
-    # Fill any missing data
-    temperature = temperature.interpolate(method='linear')
-    shortwave = shortwave.interpolate(method='linear')
-
-    # pack the data into a timetable object
-    tt = pd.DataFrame({
-        'temperature': temperature.values,
-        'shortwave': shortwave.values,
-    }, index=weather_data['timestamp']).sort_index()
-
-    tt = tt.interpolate(method='time')
-
-    tt = tt.ffill()
-
-    return tt['temperature'], tt['shortwave']
-
-def loadData():
-        
-    # Define paths
-    ComStock_dir = "ComStock"
-    InputFiles_dir = "InputFiles_github"
-    metaData_path = os.path.join(InputFiles_dir, "metaData.xlsx")
-    waterData_path = os.path.join(InputFiles_dir, "DHWEventGeneratorOutput.csv")
-    cleanedMFREDdata_path = os.path.join(InputFiles_dir, "cleanedMFREDdata.xlsx")
-    
-    
-    # Read data
-    metaData = pd.read_excel(metaData_path)
-    waterData = pd.read_csv(waterData_path)
-    cleanedMFREDdata = pd.read_excel(cleanedMFREDdata_path)
-
-    # Process metaData
-    metaData= metaData.rename(columns={     # Rename column headers in metaData
-            "PeakRatio"             :   "peakRatio",
-            "HousingUnits"          :   "housingUnits",
-            "Attached home %"       :   "percentAttached",
-            "Detached home %"       :   "percentDetached",
-            "county_name"           :   "countyName",
-            "1%_Cooling Temp. (¡F)" :   "coolingTemp",
-            "99%_Heating Temp. (¡F)":   "heatingTemp",
-            "ElectricWH%"           :   "electricWH",
-            "Mean Commuting Time"   :   "oneWayCommuteTime",
-            "Detached floor area"   :   "floorAreaDetached",
-            "Attached floor area"   :   "floorAreaAttached"
-        })
-    n = len(metaData)
-    mask = (metaData["oneWayCommuteTime"] < 24.0).to_numpy() # Generate mask for commute times < 24h
-    # Define bounds for commute speed distribution
-    low  = np.where(mask, 15, 40).reshape(n, 1) 
-    high = np.where(mask, 35, 60).reshape(n, 1)
-    # Assign commuteSpeed, commuteDistance, currentHeadroom objects to metaData
-    metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
-    metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
-    metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten() 
-
-    return metaData, waterData, cleanedMFREDdata
+    return RvalueDetached, RvalueAttached, AreaDetached, AreaAttached    

@@ -1,16 +1,15 @@
 import os
 import time
-from datetime import datetime
 import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    trirnd, Rcalc, loadData, importWeather
+    loadGlobalData, loadCityData, Rcalc
 )
     
 def main():
-    # Load Data
-    metaData, waterData, cleanedMFREDdata = loadData()
+    tic = time.perf_counter()
+    print("Loading contiguous US data files...")
 
     # Define parameters
     batteryDeg =   1     # battery degradation with outside temperature is implemented
@@ -28,10 +27,8 @@ def main():
     t = np.arange(0, tf, dt) # time span, h
     FutureHeadroom = 1.2 # Future headroom allowance multiplier 
 
-    # Time range masking
-    startTime = datetime(2018, 1, 1, 0, 0, 0) - pd.Timedelta(days=warmupDays)
-    endTime = datetime(2019, 1, 1, 0, 0, 0)
-    timeMap = pd.date_range(start=startTime, end=endTime, freq=f'{dt}h')
+    # Load general data used across all simulations
+    metaData, waterData, cleanedMFREDdata = loadGlobalData(warmupDays)
 
     states = {                              # Dictionary of states
         'MN':'Minnesota',
@@ -113,7 +110,9 @@ def main():
         'TotaCostCommercial'
         ]
 
-    tic = time.perf_counter()
+    print("Complete!")
+    toc = time.perf_counter()
+    print(f"Elapsed time is {toc-tic:.3f} seconds.")
     for stateAbbr, stateName in states.items():
         finalOutput = [] # Define array for final outputs of city simulation
 
@@ -121,10 +120,16 @@ def main():
         cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         
         #for city in cityData.itertuples(): 
-        for city in cityData.iloc[0:3].itertuples():    # debug line to test the first 3 cities
+        for city in cityData.iloc[26:27].itertuples():    # debug line to test the first 3 cities
 
-            # Load city-specific weather data
-            thetaFull, solarFull = importWeather(stateName, city.countyName, t)
+            # Load city-specific data
+            weatherData, baselineComStock, futureComStock = loadCityData(stateName, city.countyName, warmupDays)
+
+            weatherData.to_csv('weather_cleaned.csv', index=True, header=True)
+            print(weatherData)
+            #baselineComStock.to_csv('baseline_cleaned.csv', index=False)
+            #futureComStock.to_csv('future_cleaned.csv', index=False)
+
 
             # Find representative week from temperatures in weather data
             #tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, thetaFull) 
