@@ -4,14 +4,14 @@ import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    loadGlobalData, loadCityData, Rcalc
+    loadGlobalData, loadCityData, Rcalc, getDesignWeek
 )
     
 def main():
     tic = time.perf_counter()
     print("Loading contiguous US data files...")
 
-    # Define parameters
+    #region Define parameters
     batteryDeg =   1     # battery degradation with outside temperature is implemented
     waterheater = 3      # set 1 for resistance 2 for heat pump only 3 for hybrid
     sizing = 3           # set 1 for cooling 2 for heating 3 for max of heating or cooling 
@@ -26,10 +26,11 @@ def main():
     K = tf / dt          # number of time steps
     t = np.arange(0, tf, dt) # time span, h
     FutureHeadroom = 1.2 # Future headroom allowance multiplier 
+    #endregion
 
-    # Load general data used across all simulations
+    # Load contiguous US data used across all simulations
     metaData, waterData, cleanedMFREDdata = loadGlobalData(warmupDays)
-
+    
     states = {                              # Dictionary of states
         'MN':'Minnesota',
         #  'DC':'District_of_Columbia',
@@ -113,6 +114,7 @@ def main():
     print("Complete!")
     toc = time.perf_counter()
     print(f"Elapsed time is {toc-tic:.3f} seconds.")
+
     for stateAbbr, stateName in states.items():
         finalOutput = [] # Define array for final outputs of city simulation
 
@@ -120,34 +122,25 @@ def main():
         cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
         
         #for city in cityData.itertuples(): 
-        for city in cityData.iloc[26:27].itertuples():    # debug line to test the first 3 cities
+        for city in cityData.iloc[26:27].itertuples():    # debug line to test Minneapolis
 
             # Load city-specific data
-            weatherData, baselineComStock, futureComStock = loadCityData(stateName, city.countyName, warmupDays)
+            weatherData, pWorkBase, pWorkFuture = loadCityData(stateName, city.countyName, warmupDays)
+            weatherData.to_csv("weather_test.csv")
 
-            weatherData.to_csv('weather_cleaned.csv', index=True, header=True)
-            print(weatherData)
-            #baselineComStock.to_csv('baseline_cleaned.csv', index=False)
-            #futureComStock.to_csv('future_cleaned.csv', index=False)
-
-
+            print(city.heatingTemp)
             # Find representative week from temperatures in weather data
-            #tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, thetaFull) 
-            #tStartSummer, tEndSummer = getDesignWeek(city.coolingTemp, thetaFull) 
+            tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, weatherData[0], warmupDays, 'min') 
+            tStartSummer, tEndSummer = getDesignWeek(city.coolingTemp, weatherData[0], warmupDays, 'max') 
 
-            
-
+            print(tStartWinter, tEndWinter)
+            print(tStartSummer, tEndSummer)
             # Calculate effective thermal resistance of homes
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
 
             
-
-            
-
-
-
 
             # Compile results into dataTable
             finalOutput.append({
@@ -178,11 +171,11 @@ def main():
                 #"TotaCostCommercial"               :
             })
 
-            print(f'State: {stateName}, County: {city.countyName} City: {city.city_ascii}')
+            print(f'State: {stateName}, County: {city.countyName}, City: {city.city_ascii}')
             toc = time.perf_counter()
             print(f"Elapsed time is {toc-tic:.3f} seconds.")
 
-        # Export results
+        #region Export results
         dataTable = pd.DataFrame(finalOutput,columns=headers)
         os.makedirs("Final", exist_ok=True)
         outputPath = os.path.join("Final", f"{stateName}.xlsx")
@@ -190,6 +183,7 @@ def main():
 
         toc = time.perf_counter()
         print(f"Total Elapsed time is {toc-tic:.3f} seconds.")
+        #endregion
 
 if __name__ == "__main__":
     main()

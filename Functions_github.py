@@ -67,7 +67,7 @@ def loadGlobalData(warmupDays):
     waterData = pd.read_csv(waterData_path)
     cleanedMFREDdata = pd.read_excel(cleanedMFREDdata_path)
 
-    # Process metaData
+    #region Process metaData
     metaData= metaData.rename(columns={     # Rename column headers in metaData
             "PeakRatio"             :   "peakRatio",
             "HousingUnits"          :   "housingUnits",
@@ -90,6 +90,9 @@ def loadGlobalData(warmupDays):
     metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
     metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
     metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten() 
+    metaData["coolingTemp"] = (metaData["coolingTemp"] - 32) * 5 / 9 # Convert heating/cooling temps to celsius
+    metaData["heatingTemp"] = (metaData["heatingTemp"] - 32) * 5 / 9
+    #endregion
 
     cleanedMFREDdata = retimeData(cleanedMFREDdata, warmupDays, 1)
 
@@ -97,49 +100,59 @@ def loadGlobalData(warmupDays):
 
 def loadCityData(stateName, countyName, warmupDays):
     # Import raw data
-    weatherData = pd.read_csv('ComStock/weather_data/' + stateName + '/' + countyName.replace(" ","_") + "_amy2018.csv", header=0)
+    weatherData = pd.read_csv('ComStock/weather_data/' + stateName + '/' + countyName.replace(" ","_") + "_amy2018.csv", header=0, usecols=[0, 1, 5]) # Read only the timestamp, temperature, and shortwave    
     baselineComStock = pd.read_csv('ComStock/baseline_merged_results/' + stateName + '/' + countyName + ".csv")
     futureComStock = pd.read_csv('ComStock/future_merged_results/' + stateName + '/' + countyName + ".csv")
+    
+    weatherData = weatherData.rename(columns={     # Rename column headers in metaData
+                "Dry Bulb Temperature [°C]"             :   "temperature",
+                "Global Horizontal Radiation [W/m2]"    :   "shortwave",
+            })
+    
+    pWorkBase = baselineComStock[[baselineComStock.columns[0]]].copy()
+    pWorkBase['total_load_baseline'] = baselineComStock.iloc[:, 1:].sum(axis=1)
+    pWorkFuture = futureComStock[[futureComStock.columns[0]]].copy()
+    pWorkFuture['total_load_future'] = futureComStock.iloc[:, 1:].sum(axis=1)
 
     # Clean and retime data
     weatherData = retimeData(weatherData, warmupDays, 0)
-    #baselineComStock = retimeData(baselineComStock, warmupDays, 2)
-    #futureComStock = retimeData(futureComStock, warmupDays, 2)
-
-    return weatherData, baselineComStock, futureComStock
+    pWorkBase = retimeData(pWorkBase, warmupDays, 2)
+    pWorkFuture = retimeData(pWorkFuture, warmupDays, 2)
+       
+    return weatherData, pWorkBase, pWorkFuture
 
 def retimeData(rawData, warmupDays, checkFile):
     # checkFile = 0 for weather, 1 for cleanedMFREDdata, 2 for baseline/future
 
     # Adjust time to EST (UTC-5) for cleanedMFREDdata
     if checkFile == 0:
-        offsetTime = 1 # Offset the hour-end timestamps to hour-start timestamps NOTE NOTE NOTE NOTE NOTE
+        offsetTime = 0 #1 # Offset the hour-ending timestamps to hour-beginning timestamps NOTE NOTE NOTE NOTE NOTE
     elif checkFile == 1:
-        offsetTime = 5  # Offset UTC to EST(=UTC=-5)
+        offsetTime = 5  # Offset UTC to EST(=UTC-5)
     else:
         offsetTime = 0
 
     # Extract time (assumed first column) and convert to datetime format
     timestamps = pd.to_datetime(rawData.iloc[:, 0])
 
-    # Adjust year to match weather file for non-weather data files
-    timestamps = timestamps.map(lambda d: d.replace(year=2018)) - pd.Timedelta(hours=offsetTime)
+    # Adjust year to match master time vector for non-weather data files
+    if checkFile != 0:
+        timestamps = timestamps.map(lambda d: d.replace(year=2018)) - pd.Timedelta(hours=offsetTime)
 
     # Extract power profiles and fill missing values linearly
     data = rawData.iloc[:, 1:].apply(pd.to_numeric, errors='coerce')
     data = data.interpolate(method='linear', limit_direction='both')
 
     # Create timetable (DataFrame indexed by time)
-    individual_power = pd.DataFrame(data.values, index=timestamps)
+    data = pd.DataFrame(data.values, index=timestamps)
 
     # Define master time map (Derived from weather data)
     start_time = pd.Timestamp(2018, 1, 1) - pd.Timedelta(days=warmupDays)
     end_time = pd.Timestamp(2019, 1, 1)
     masterTime = pd.date_range(start=start_time, end=end_time, freq='1h')
 
-    # Retime / Resample to match weatherTime grid
-    # Combine indices, 
-    retimedData = individual_power.reindex(individual_power.index.union(masterTime))
+    # Retime / Resample to match master time grid
+    retimedData = data.reindex(data.index.union(masterTime))
 
     # Filter to weather_time grid
     retimedData = retimedData.reindex(masterTime)
@@ -160,13 +173,15 @@ def retimeData(rawData, warmupDays, checkFile):
         retimedData.loc[idx_2017] = repeated_filling
 
     retimedData = interpLinear(retimedData) # Final linear interpolation
+    if checkFile == 0:
+        retimedData = retimedData.bfill() # backfill the first cell of weather data ONLY BECAUSE OF TIMING MISALIGNMENT
     retimedData = retimedData.round(4) # Align all values to 4 decimal places
 
     return retimedData
 
 def interpLinear(data):
-    value_cols = data.columns  # all columns are data now, since date is the index
-    x_numeric = data.index.astype('int64') / 1e9  # datetime -> seconds, for arithmetic
+    value_cols = data.columns 
+    x_numeric = data.index.astype('int64') / 1e9 
     
     for col in value_cols:
         col_idx = data.columns.get_loc(col)
@@ -238,3 +253,40 @@ def Rcalc(Uwall,Uwindow,AreaDetached,AreaAttached,n1):
     RvalueAttached = 1/(mdotCp/1000 + Uwall*AwAttached/1000 + Ur*AreaRoofAttached/1000)
 
     return RvalueDetached, RvalueAttached, AreaDetached, AreaAttached    
+
+def getDesignWeek(designTemp, temps, warmupDays, mode,
+                  yearStart="2018-01-01"):
+    if isinstance(temps, pd.DataFrame):
+        temps = temps.iloc[:, 0]
+    t0 = pd.Timestamp(yearStart)
+    temps = temps[temps.index >= t0]              # drop warmup padding
+
+    weeks = temps.groupby((temps.index - t0) // pd.Timedelta(days=7))
+    extreme = weeks.min() if mode == "min" else weeks.max()
+    extreme = extreme[weeks.size() == 168]        # full weeks only
+
+    k = int((extreme - designTemp).abs().idxmin())
+    designStart = t0 + pd.Timedelta(days=7 * k)
+    return designStart - pd.Timedelta(days=warmupDays), designStart + pd.Timedelta(days=7)
+
+def importElectricity(stateName):
+    West = {'Montana', 'Idaho', 'Wyoming' ,'Nevada', 'Utah', 'Colorado', 'Arizona', 'New Mexico','Washington', 'Oregon', 'California', 'Alaska', 'Hawaii'}
+    MidWest = {'Ohio', 'Indiana', 'Illinois', 'Michigan', 'Wisconsin','Minnesota', 'Iowa', 'Missouri', 'North Dakota', 'South Dakota', 'Nebraska', 'Kansas'}
+    NorthEast ={'Maine', 'New Hampshire', 'Vermont', 'Massachusetts', 'Rhode Island', 'Connecticut','New York', 'Pennsylvania', 'New Jersey'}
+
+    if stateName in West: # https://www.eia.gov/consumption/residential/data/2020/c&e/pdf/ce4.2.pdf
+        scaling_detached = (17e9+96e9)/(16.97e6*8760)
+        scaling_attached = ((1e9+6e9)/(8760*1.69e6) + (1e9+5e9)/(8760*1.89e6) + (3e9+14e9)/(8760*5.70e6) )/3
+    elif stateName in MidWest:
+        scaling_detached = (18e9+115e9)/(8760*18.58e6)
+        scaling_attached = ((1e9+6e9)/(8760*1.33e6) + (1e9+5e9)/(8760*1.95e6) + (2e9+10e9)/(8760*4.20e6) )/3
+    elif stateName in NorthEast:
+        scaling_detached = (10e9+66e9)/(11.23e6*8760)
+        scaling_attached = ((2e9+8e9)/(8760*1.95e6) + (2e9+8e9)/(8760*3.15e6) + (3e9+11e9)/(8760*5.10e6) )/3
+    else:
+        scaling_detached = (31e9+205e9)/(30.29e6*8760)
+        scaling_attached = ((2e9+11e9)/(8760*2.48e6) + (1e9+8e9)/(8760*2.36e6) + (5e9+26e9)/(8760*7.83e6) )/3
+
+
+
+    return P,fullP,P_detached_window,P_attached_window

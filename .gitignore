@@ -9376,3 +9376,12 @@ InputFiles_github/DHWEventGeneratorOutput.csv
 InputFiles_github/metaData.xlsx
 Notes.txt
 requirements.txt
+MFREDtest.csv
+.gitignore
+baseline_cleaned.csv
+future_cleaned.csv
+TimeMisalignmentExample.xlsx
+weather_cleaned.csv
+weather.txt
+weather_test.csv
+.gitignore
