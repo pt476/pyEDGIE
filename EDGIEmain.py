@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    loadGlobalData, loadCityData, Rcalc, getDesignWeek
+    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResidentialLoad
 )
     
 def main():
@@ -124,23 +124,36 @@ def main():
         #for city in cityData.itertuples(): 
         for city in cityData.iloc[26:27].itertuples():    # debug line to test Minneapolis
 
-            # Load city-specific data
+            #region Get city-specific data 
+            # Retiming is done within loadCityData()
             weatherData, pWorkBase, pWorkFuture = loadCityData(stateName, city.countyName, warmupDays)
-            weatherData.to_csv("weather_test.csv")
+            #endregion 
 
-            print(city.heatingTemp)
-            # Find representative week from temperatures in weather data
+            #region Find representative week from temperatures in weather data
             tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, weatherData[0], warmupDays, 'min') 
             tStartSummer, tEndSummer = getDesignWeek(city.coolingTemp, weatherData[0], warmupDays, 'max') 
+            #endregion
 
-            print(tStartWinter, tEndWinter)
-            print(tStartSummer, tEndSummer)
-            # Calculate effective thermal resistance of homes
+            #region Calculate effective thermal resistance of homes
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
+            #endregion
 
-            
+            #region Import residential power loads
+            resLoadYear, resLoadDetached, resLoadAttached = buildResidentialLoad(cleanedMFREDdata, numHomes, stateName, city.percentAttached, forceColumn=0)
+            idx = cleanedMFREDdata.index
+            resLoadWinter = sliceWindow(resLoadYear, tStartWinter, tEndWinter, index=idx)
+            resLoadSummer = sliceWindow(resLoadYear, tStartSummer, tEndSummer, index=idx)
+            resLoadDetachedWinter = sliceWindow(resLoadDetached, tStartWinter, tEndWinter, index=idx)
+            resLoadAttachedWinter = sliceWindow(resLoadAttached, tStartWinter, tEndWinter, index=idx)
+            resLoadDetachedSummer = sliceWindow(resLoadDetached, tStartSummer, tEndSummer, index=idx)
+            resLoadAttachedSummer = sliceWindow(resLoadAttached, tStartSummer, tEndSummer, index=idx)
+            #endregion
+
+            #region Import commercial power loads
+
+            #endregion
 
             # Compile results into dataTable
             finalOutput.append({

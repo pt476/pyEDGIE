@@ -269,24 +269,62 @@ def getDesignWeek(designTemp, temps, warmupDays, mode,
     designStart = t0 + pd.Timedelta(days=7 * k)
     return designStart - pd.Timedelta(days=warmupDays), designStart + pd.Timedelta(days=7)
 
-def importElectricity(stateName):
-    West = {'Montana', 'Idaho', 'Wyoming' ,'Nevada', 'Utah', 'Colorado', 'Arizona', 'New Mexico','Washington', 'Oregon', 'California', 'Alaska', 'Hawaii'}
-    MidWest = {'Ohio', 'Indiana', 'Illinois', 'Michigan', 'Wisconsin','Minnesota', 'Iowa', 'Missouri', 'North Dakota', 'South Dakota', 'Nebraska', 'Kansas'}
-    NorthEast ={'Maine', 'New Hampshire', 'Vermont', 'Massachusetts', 'Rhode Island', 'Connecticut','New York', 'Pennsylvania', 'New Jersey'}
-
-    if stateName in West: # https://www.eia.gov/consumption/residential/data/2020/c&e/pdf/ce4.2.pdf
-        scaling_detached = (17e9+96e9)/(16.97e6*8760)
-        scaling_attached = ((1e9+6e9)/(8760*1.69e6) + (1e9+5e9)/(8760*1.89e6) + (3e9+14e9)/(8760*5.70e6) )/3
-    elif stateName in MidWest:
-        scaling_detached = (18e9+115e9)/(8760*18.58e6)
-        scaling_attached = ((1e9+6e9)/(8760*1.33e6) + (1e9+5e9)/(8760*1.95e6) + (2e9+10e9)/(8760*4.20e6) )/3
-    elif stateName in NorthEast:
-        scaling_detached = (10e9+66e9)/(11.23e6*8760)
-        scaling_attached = ((2e9+8e9)/(8760*1.95e6) + (2e9+8e9)/(8760*3.15e6) + (3e9+11e9)/(8760*5.10e6) )/3
+def getScaling(stateName):
+    West = {'Montana','Idaho','Wyoming','Nevada','Utah','Colorado','Arizona','New Mexico',
+            'Washington','Oregon','California','Alaska','Hawaii'}
+    MidWest = {'Ohio','Indiana','Illinois','Michigan','Wisconsin','Minnesota','Iowa',
+               'Missouri','North Dakota','South Dakota','Nebraska','Kansas'}
+    NorthEast = {'Maine','New Hampshire','Vermont','Massachusetts','Rhode Island',
+                 'Connecticut','New York','Pennsylvania','New Jersey'}
+    s = stateName.replace("_", " ")
+    h = 8760
+    if s in West:
+        det = (17e9+96e9)/(16.97e6*h)
+        att = ((1e9+6e9)/(h*1.69e6) + (1e9+5e9)/(h*1.89e6) + (3e9+14e9)/(h*5.70e6))/3
+    elif s in MidWest:
+        det = (18e9+115e9)/(h*18.58e6)
+        att = ((1e9+6e9)/(h*1.33e6) + (1e9+5e9)/(h*1.95e6) + (2e9+10e9)/(h*4.20e6))/3
+    elif s in NorthEast:
+        det = (10e9+66e9)/(11.23e6*h)
+        att = ((2e9+8e9)/(h*1.95e6) + (2e9+8e9)/(h*3.15e6) + (3e9+11e9)/(h*5.10e6))/3
     else:
-        scaling_detached = (31e9+205e9)/(30.29e6*8760)
-        scaling_attached = ((2e9+11e9)/(8760*2.48e6) + (1e9+8e9)/(8760*2.36e6) + (5e9+26e9)/(8760*7.83e6) )/3
+        det = (31e9+205e9)/(30.29e6*h)
+        att = ((2e9+11e9)/(h*2.48e6) + (1e9+8e9)/(h*2.36e6) + (5e9+26e9)/(h*7.83e6))/3
+    return det, att
 
+def sliceWindow(data, tStart, tEnd, index=None):
+    """
+    Return the rows in [tStart, tEnd)
+    """
+    if index is None:
+        index = data.index
+    mask = (index >= tStart) & (index < tEnd)
+    if hasattr(data, "iloc"):
+        return data.iloc[mask].to_numpy()
+    return np.asarray(data)[mask]
 
+def buildResidentialLoad(individualPower, numHomes, stateName, percentAttached,
+                         forceColumn=None):
+    """Build the no-electrification residential load for the full year.
+    """
+    scalingDet, scalingAtt = getScaling(stateName)
+    power = individualPower.to_numpy(dtype=float)     
+    nMFRED = power.shape[1]
+    colMean = power.mean(axis=0)                     
 
-    return P,fullP,P_detached_window,P_attached_window
+    nAtt = round(numHomes * percentAttached)
+    nDet = numHomes - nAtt
+
+    if forceColumn is None:
+        idxDet = rng.integers(0, nMFRED, size=nDet)
+        idxAtt = rng.integers(0, nMFRED, size=nAtt)
+    else:
+        idxDet = np.full(nDet, forceColumn, dtype=int)
+        idxAtt = np.full(nAtt, forceColumn, dtype=int)
+
+    # Normalize each chosen profile by its own mean, then scale to regional average
+    homesDet = scalingDet * power[:, idxDet] / colMean[idxDet]
+    homesAtt = scalingAtt * power[:, idxAtt] / colMean[idxAtt]
+
+    resLoadYear = homesDet.sum(axis=1) + homesAtt.sum(axis=1)
+    return resLoadYear, homesDet, homesAtt
