@@ -119,14 +119,14 @@ def main():
         finalOutput = [] # Define array for final outputs of city simulation
 
         # Extract data for current state 
-        cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current city
+        cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current state
         
         #for city in cityData.itertuples(): 
         for city in cityData.iloc[26:27].itertuples():    # debug line to test Minneapolis
 
             #region Get city-specific data 
             # Retiming is done within loadCityData()
-            weatherData, pWorkBase, pWorkFuture = loadCityData(stateName, city.countyName, warmupDays)
+            weatherData, comLoadBase, comLoadFuture = loadCityData(stateName, city.countyName, warmupDays)
             #endregion 
 
             #region Find representative week from temperatures in weather data
@@ -140,7 +140,7 @@ def main():
             RvalueAttached_mean = RvalueAttached.mean()
             #endregion
 
-            #region Import residential power loads
+            #region Import residential power loads with distinction between attached/detached houses
             resLoadYear, resLoadDetached, resLoadAttached = buildResidentialLoad(cleanedMFREDdata, numHomes, stateName, city.percentAttached, forceColumn=0)
             idx = cleanedMFREDdata.index
             resLoadWinter = sliceWindow(resLoadYear, tStartWinter, tEndWinter, index=idx)
@@ -151,10 +151,22 @@ def main():
             resLoadAttachedSummer = sliceWindow(resLoadAttached, tStartSummer, tEndSummer, index=idx)
             #endregion
 
-            #region Import commercial power loads
-
+            #region Slice commercial power loads. ComStock data already imported in loadCityData() no scaling required
+            comLoadBaseWinter = sliceWindow(comLoadBase, tStartWinter, tEndWinter, index=idx)
+            comLoadFutureWinter = sliceWindow(comLoadFuture, tStartWinter, tEndWinter, index=idx)
+            comLoadBaseSummer = sliceWindow(comLoadBase, tStartSummer, tEndSummer, index=idx)
+            comLoadFutureSummer = sliceWindow(comLoadFuture, tStartSummer, tEndSummer, index=idx)
             #endregion
 
+            #region DEBUG LINES
+            '''
+            Remember to change buildResidentialLoad() to sample from the full MFRED range
+            Remember to change the city-level loops to accommodate all cities
+            Remember to uncomment all state abbreviations
+            '''
+            np.savetxt("pWorkBaseWinter_python.csv", comLoadBaseWinter, delimiter=",")
+            #endregion
+            
             # Compile results into dataTable
             finalOutput.append({
                 "State"                             : stateName,

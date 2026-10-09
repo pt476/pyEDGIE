@@ -118,7 +118,7 @@ def loadCityData(stateName, countyName, warmupDays):
     weatherData = retimeData(weatherData, warmupDays, 0)
     pWorkBase = retimeData(pWorkBase, warmupDays, 2)
     pWorkFuture = retimeData(pWorkFuture, warmupDays, 2)
-       
+
     return weatherData, pWorkBase, pWorkFuture
 
 def retimeData(rawData, warmupDays, checkFile):
