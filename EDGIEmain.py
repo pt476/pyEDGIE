@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResidentialLoad
+    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResLoad, sizeHeatPump
 )
     
 def main():
@@ -130,25 +130,27 @@ def main():
             #endregion 
 
             #region Find representative week from temperatures in weather data
-            tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, weatherData[0], warmupDays, 'min') 
-            tStartSummer, tEndSummer = getDesignWeek(city.coolingTemp, weatherData[0], warmupDays, 'max') 
+            tStartWinter, tEndWinter = getDesignWeek(city.heatingTemp, weatherData['temperature'], warmupDays, 'min') 
+            tStartSummer, tEndSummer = getDesignWeek(city.coolingTemp, weatherData['temperature'], warmupDays, 'max') 
             #endregion
 
             #region Calculate effective thermal resistance of homes
             RvalueDetached, RvalueAttached, floorAreaDetached, floorAreaAttached = Rcalc(city.Uwall,city.Uwindow,city.floorAreaDetached,city.floorAreaAttached,numHomes)
             RValueDetached_mean = RvalueDetached.mean()
             RvalueAttached_mean = RvalueAttached.mean()
+            floorAreaDetached_mean = floorAreaDetached.mean()
+            floorAreaAttached_mean = floorAreaAttached.mean()
             #endregion
 
             #region Import residential power loads with distinction between attached/detached houses
-            resLoadYear, resLoadDetached, resLoadAttached = buildResidentialLoad(cleanedMFREDdata, numHomes, stateName, city.percentAttached, forceColumn=0)
+            resLoadYear, resLoadDetached, resLoadAttached = buildResLoad(cleanedMFREDdata, numHomes, stateName, city.percentAttached, forceColumn=0)
             idx = cleanedMFREDdata.index
-            resLoadWinter = sliceWindow(resLoadYear, tStartWinter, tEndWinter, index=idx)
-            resLoadSummer = sliceWindow(resLoadYear, tStartSummer, tEndSummer, index=idx)
-            resLoadDetachedWinter = sliceWindow(resLoadDetached, tStartWinter, tEndWinter, index=idx)
-            resLoadAttachedWinter = sliceWindow(resLoadAttached, tStartWinter, tEndWinter, index=idx)
-            resLoadDetachedSummer = sliceWindow(resLoadDetached, tStartSummer, tEndSummer, index=idx)
-            resLoadAttachedSummer = sliceWindow(resLoadAttached, tStartSummer, tEndSummer, index=idx)
+            resLoad_Winter = sliceWindow(resLoadYear, tStartWinter, tEndWinter, index=idx)
+            resLoad_Summer = sliceWindow(resLoadYear, tStartSummer, tEndSummer, index=idx)
+            resLoadDetached_Winter = sliceWindow(resLoadDetached, tStartWinter, tEndWinter, index=idx)
+            resLoadAttached_Winter = sliceWindow(resLoadAttached, tStartWinter, tEndWinter, index=idx)
+            resLoadDetached_Summer = sliceWindow(resLoadDetached, tStartSummer, tEndSummer, index=idx)
+            resLoadAttached_Summer = sliceWindow(resLoadAttached, tStartSummer, tEndSummer, index=idx)
             #endregion
 
             #region Slice commercial power loads. ComStock data already imported in loadCityData() no scaling required
@@ -158,13 +160,28 @@ def main():
             comLoadFutureSummer = sliceWindow(comLoadFuture, tStartSummer, tEndSummer, index=idx)
             #endregion
 
+            #region Residential Heat Pump Sizing
+            # Find peak HP requirements
+            hpSizeAttached_Summer = sizeHeatPump('cooling', 'att', resLoadYear, numHomes, weatherData, city.coolingTemp, floorAreaAttached_mean, RvalueAttached_mean)
+            hpSizeDetached_Summer = sizeHeatPump('cooling', 'det', resLoadYear, numHomes, weatherData, city.coolingTemp, floorAreaDetached_mean, RValueDetached_mean)
+            hpSizeAttached_Winter = sizeHeatPump('heating', 'att', resLoadYear, numHomes, weatherData, city.heatingTemp, floorAreaAttached_mean, RvalueAttached_mean)
+            hpSizeDetached_Winter = sizeHeatPump('heating', 'det', resLoadYear, numHomes, weatherData, city.heatingTemp, floorAreaDetached_mean, RValueDetached_mean)
+            #
+            #endregion
+
+
             #region DEBUG LINES
             '''
+            Verify if buildResidentialLoad() can be moved from city-level loops to outside the loops
             Remember to change buildResidentialLoad() to sample from the full MFRED range
             Remember to change the city-level loops to accommodate all cities
             Remember to uncomment all state abbreviations
             '''
-            np.savetxt("pWorkBaseWinter_python.csv", comLoadBaseWinter, delimiter=",")
+            # np.savetxt("pWorkBaseWinter_python.csv", comLoadBaseWinter, delimiter=",")
+            print('hpSizeAttached_Summer: ', hpSizeAttached_Summer)
+            print('hpSizeDetached_Summer: ', hpSizeDetached_Summer)
+            print('hpSizeAttached_Winter: ', hpSizeAttached_Winter)
+            print('hpSizeDetached_Winter: ', hpSizeDetached_Winter)
             #endregion
             
             # Compile results into dataTable
@@ -196,9 +213,11 @@ def main():
                 #"TotaCostCommercial"               :
             })
 
+            #region Show processed city in terminal
             print(f'State: {stateName}, County: {city.countyName}, City: {city.city_ascii}')
             toc = time.perf_counter()
             print(f"Elapsed time is {toc-tic:.3f} seconds.")
+            #endregion
 
         #region Export results
         dataTable = pd.DataFrame(finalOutput,columns=headers)

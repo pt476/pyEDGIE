@@ -142,13 +142,14 @@ def retimeData(rawData, warmupDays, checkFile):
     # Extract power profiles and fill missing values linearly
     data = rawData.iloc[:, 1:].apply(pd.to_numeric, errors='coerce')
     data = data.interpolate(method='linear', limit_direction='both')
-
-    # Create timetable (DataFrame indexed by time)
-    data = pd.DataFrame(data.values, index=timestamps)
+    
+    # [Did not use this because this strips column headers in weatherData] Create timetable (DataFrame indexed by time)
+    # data = pd.DataFrame(data.values, index=timestamps)
+    data.index = timestamps # Referenced index directly instead of converting to timetable
 
     # Define master time map (Derived from weather data)
     start_time = pd.Timestamp(2018, 1, 1) - pd.Timedelta(days=warmupDays)
-    end_time = pd.Timestamp(2019, 1, 1)
+    end_time = pd.Timestamp(2019, 1, 1) # NOTE this end time is technically 1 year and 1 hour
     masterTime = pd.date_range(start=start_time, end=end_time, freq='1h')
 
     # Retime / Resample to match master time grid
@@ -303,7 +304,7 @@ def sliceWindow(data, tStart, tEnd, index=None):
         return data.iloc[mask].to_numpy()
     return np.asarray(data)[mask]
 
-def buildResidentialLoad(individualPower, numHomes, stateName, percentAttached,
+def buildResLoad(individualPower, numHomes, stateName, percentAttached,
                          forceColumn=None):
     """Build the no-electrification residential load for the full year.
     """
@@ -328,3 +329,42 @@ def buildResidentialLoad(individualPower, numHomes, stateName, percentAttached,
 
     resLoadYear = homesDet.sum(axis=1) + homesAtt.sum(axis=1)
     return resLoadYear, homesDet, homesAtt
+
+def sizeHeatPump(mode, houseType,  resLoadYear, numHomes, weatherData, designTemp, floorArea, R_mean):
+    # Define data
+    K = len(weatherData)
+    temps = weatherData['temperature'].to_numpy()
+    # Define AHRI Standard 210/240 performance ratings for AC/HP 
+    if mode == 'cooling':
+        thetaLow = f2c(82)
+        thetaHigh = f2c(95)
+    elif mode == 'heating':
+        designTemp = weatherData['temperature'].min()
+        thetaLow = f2c(5)
+        thetaHigh = f2c(45)
+
+    # Unused COP target efficiency
+    # etaLow = trirnd(4.00,4.40,1,numHouses)
+    # etaHigh = trirnd(3.2,3.30,1,numHouses)
+    # eta2 = -(etaLow + (etaHigh-etaLow)*(designTemp-thetaLow)/(thetaHigh-thetaLow))
+
+    heatGen_elec = resLoadYear / numHomes                                       # thermal power from electrical loads other than heat pump, kW
+    heatGen_body = trirnd(0.1,0.5,K,1).ravel()                                  # thermal power from body heat, kW
+    heatGen_solar = ((0.03 * trirnd(0.9, 1.1, K, 1).ravel()                     # thermal power from sunlight, kW 
+                      * floorArea * weatherData['shortwave'].to_numpy()) / 1000)
+
+    totalHeat = heatGen_elec + heatGen_body + heatGen_solar
+
+    if houseType == 'att':
+        totalHeat = totalHeat / 4 # Scale down total power for attached houses
+
+    Tset = f2c(trirnd(61, 76, 1, 1)).item()
+
+    if mode == 'heating':
+        ind = np.argmin(temps)                        # coldest hour of the year
+        thermalPower = (Tset - designTemp) / R_mean - totalHeat[ind]
+        return trirnd(1.2, 1.3, 1, 1).item() * thermalPower
+    elif mode == 'cooling':
+        ind = np.argmin(np.abs(designTemp - temps))   # hour closest to design temp
+        thermalPower = (Tset - designTemp) / R_mean - totalHeat[ind]
+        return trirnd(1.2, 1.3, 1, 1).item() * abs(thermalPower) / 0.80
