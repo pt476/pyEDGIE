@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResLoad, sizeHeatPump
+    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResLoad, sizeHeatPump, chooseHpSize
 )
-    
+
 def main():
     tic = time.perf_counter()
     print("Loading contiguous US data files...")
@@ -161,14 +161,30 @@ def main():
             #endregion
 
             #region Residential Heat Pump Sizing
-            # Find peak HP requirements
+            # Find peak HP requirements for each extreme season
             hpSizeAttached_Summer = sizeHeatPump('cooling', 'att', resLoadYear, numHomes, weatherData, city.coolingTemp, floorAreaAttached_mean, RvalueAttached_mean)
             hpSizeDetached_Summer = sizeHeatPump('cooling', 'det', resLoadYear, numHomes, weatherData, city.coolingTemp, floorAreaDetached_mean, RValueDetached_mean)
             hpSizeAttached_Winter = sizeHeatPump('heating', 'att', resLoadYear, numHomes, weatherData, city.heatingTemp, floorAreaAttached_mean, RvalueAttached_mean)
             hpSizeDetached_Winter = sizeHeatPump('heating', 'det', resLoadYear, numHomes, weatherData, city.heatingTemp, floorAreaDetached_mean, RValueDetached_mean)
+
+            # Find the largest required HP power size between Winter and Summer months for Attached/Detached houses
+            hpSizeAttached, modeAtt = chooseHpSize(sizing, hpSizeAttached_Winter, hpSizeAttached_Summer)
+            hpSizeDetached, modeDet = chooseHpSize(sizing, hpSizeDetached_Winter, hpSizeDetached_Summer)
+
+            capAttached = selectBestHvac(modeAtt, city.heatingTemp if modeAtt == 'heating' else city.coolingTemp, hpSizeAttached)
+            capDetached = selectBestHvac(modeDet, city.heatingTemp if modeDet == 'heating' else city.coolingTemp, hpSizeDetached)
+
+            (capLow_Attached_cooling, capHigh_Attached_cooling,
+            capLow_Attached_heating, capHigh_Attached_heating) = capAttached
+            (capLow_Detached_cooling, capHigh_Detached_cooling,
+            capLow_Detached_heating, capHigh_Detached_heating) = capDetached
+
             #
             #endregion
+            
+            #region Select best HVAC system
 
+            #endregion
 
             #region DEBUG LINES
             '''

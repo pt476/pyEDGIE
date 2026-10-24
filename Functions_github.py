@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
-
 rng = np.random.default_rng(1)
 
 def btu2wh(x):
@@ -53,6 +52,27 @@ def trirnd(a, c, m, n):
             drawn from the specified triangular distribution.
     """
     return rng.triangular(a, (a + c) / 2.0, c, size=(m, n))
+
+def interpLinear(data):
+    value_cols = data.columns 
+    x_numeric = data.index.astype('int64') / 1e9 
+    
+    for col in value_cols:
+        col_idx = data.columns.get_loc(col)
+        
+        for i in range(2, len(data)):
+            if pd.isna(data.iloc[i, col_idx]):
+                x1, y1 = x_numeric[i-2], data.iloc[i-2, col_idx]
+                x2, y2 = x_numeric[i-1], data.iloc[i-1, col_idx]
+                x_new = x_numeric[i]
+                
+                if pd.isna(y1) or pd.isna(y2):
+                    continue  # not enough valid prior data yet
+                
+                slope = (y2 - y1) / (x2 - x1)
+                data.iloc[i, col_idx] = y1 + slope * (x_new - x1)
+    
+    return data
 
 def loadGlobalData(warmupDays):
         
@@ -179,27 +199,6 @@ def retimeData(rawData, warmupDays, checkFile):
     retimedData = retimedData.round(4) # Align all values to 4 decimal places
 
     return retimedData
-
-def interpLinear(data):
-    value_cols = data.columns 
-    x_numeric = data.index.astype('int64') / 1e9 
-    
-    for col in value_cols:
-        col_idx = data.columns.get_loc(col)
-        
-        for i in range(2, len(data)):
-            if pd.isna(data.iloc[i, col_idx]):
-                x1, y1 = x_numeric[i-2], data.iloc[i-2, col_idx]
-                x2, y2 = x_numeric[i-1], data.iloc[i-1, col_idx]
-                x_new = x_numeric[i]
-                
-                if pd.isna(y1) or pd.isna(y2):
-                    continue  # not enough valid prior data yet
-                
-                slope = (y2 - y1) / (x2 - x1)
-                data.iloc[i, col_idx] = y1 + slope * (x_new - x1)
-    
-    return data
 
 def Rcalc(Uwall,Uwindow,AreaDetached,AreaAttached,n1):
     """Calculates thermal resistance (R-values) and converted areas for detached and attached buildings.
@@ -368,3 +367,15 @@ def sizeHeatPump(mode, houseType,  resLoadYear, numHomes, weatherData, designTem
         ind = np.argmin(np.abs(designTemp - temps))   # hour closest to design temp
         thermalPower = (Tset - designTemp) / R_mean - totalHeat[ind]
         return trirnd(1.2, 1.3, 1, 1).item() * abs(thermalPower) / 0.80
+
+def chooseHpSize(sizing, hpHeating, hpCooling):
+    """
+    sizing: 1 = cooling, 2 = heating, 3 = larger of heating or cooling.
+    Returns (hpSize, mode) where mode is 'heating' or 'cooling'.
+    """
+    if sizing == 1:
+        return hpCooling, 'cooling'
+    elif sizing == 2:
+        return hpHeating, 'heating'
+    elif sizing == 3:
+        return (hpHeating, 'heating') if hpHeating > hpCooling else (hpCooling, 'cooling')
