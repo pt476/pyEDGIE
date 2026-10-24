@@ -106,12 +106,20 @@ def loadGlobalData(warmupDays):
     # Define bounds for commute speed distribution
     low  = np.where(mask, 15, 40).reshape(n, 1) 
     high = np.where(mask, 35, 60).reshape(n, 1)
-    # Assign commuteSpeed, commuteDistance, currentHeadroom objects to metaData
+    # Clean metaData: Assign commuteSpeed, commuteDistance, currentHeadroom objects to metaData. Restrict bounds of floor areas.
     metaData["commuteSpeed"]    = trirnd(low, high, n, 1).flatten()
     metaData["commuteDistance"] = metaData["oneWayCommuteTime"] * metaData["commuteSpeed"] / 60
     metaData["currentHeadroom"] = np.round(trirnd(1.15, 1.36, n, 1), 2).flatten() 
     metaData["coolingTemp"] = (metaData["coolingTemp"] - 32) * 5 / 9 # Convert heating/cooling temps to celsius
     metaData["heatingTemp"] = (metaData["heatingTemp"] - 32) * 5 / 9
+    # Clean floor area data
+    # Replace NaN values with 0
+    metaData["floorAreaDetached"] = metaData["floorAreaDetached"].fillna(0)
+    metaData["floorAreaAttached"] = metaData["floorAreaAttached"].fillna(0)
+    # Cap detached floor area to [1000, 3000] sqft
+    metaData["floorAreaDetached"] = metaData["floorAreaDetached"].clip(lower=1000, upper=3000)
+    # Cap attached floor area to [450, 1700] sqft
+    metaData["floorAreaAttached"] = metaData["floorAreaAttached"].clip(lower=450, upper=1700)
     #endregion
 
     cleanedMFREDdata = retimeData(cleanedMFREDdata, warmupDays, 1)
