@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from Functions_github import (
-    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResLoad, sizeHeatPump, chooseHpSize
+    loadGlobalData, loadCityData, Rcalc, getDesignWeek, sliceWindow, buildResLoad, sizeHeatPump, chooseHpSize, selectBestHvac
 )
 
 def main():
@@ -171,13 +171,8 @@ def main():
             hpSizeAttached, modeAtt = chooseHpSize(sizing, hpSizeAttached_Winter, hpSizeAttached_Summer)
             hpSizeDetached, modeDet = chooseHpSize(sizing, hpSizeDetached_Winter, hpSizeDetached_Summer)
 
-            capAttached = selectBestHvac(modeAtt, city.heatingTemp if modeAtt == 'heating' else city.coolingTemp, hpSizeAttached)
-            capDetached = selectBestHvac(modeDet, city.heatingTemp if modeDet == 'heating' else city.coolingTemp, hpSizeDetached)
-
-            (capLow_Attached_cooling, capHigh_Attached_cooling,
-            capLow_Attached_heating, capHigh_Attached_heating) = capAttached
-            (capLow_Detached_cooling, capHigh_Detached_cooling,
-            capLow_Detached_heating, capHigh_Detached_heating) = capDetached
+            (capLow_Attached_cooling, capHigh_Attached_cooling, capLow_Attached_heating, capHigh_Attached_heating) = selectBestHvac(modeAtt, city.heatingTemp if modeAtt == 'heating' else city.coolingTemp, hpSizeAttached, "InputFiles_github")
+            (capLow_Detached_cooling, capHigh_Detached_cooling, capLow_Detached_heating, capHigh_Detached_heating) = selectBestHvac(modeDet, city.heatingTemp if modeDet == 'heating' else city.coolingTemp, hpSizeDetached, "InputFiles_github")
 
             #
             #endregion
@@ -188,16 +183,23 @@ def main():
 
             #region DEBUG LINES
             '''
+            NOTE change trirnd to be random again
             Verify if buildResidentialLoad() can be moved from city-level loops to outside the loops
             Remember to change buildResidentialLoad() to sample from the full MFRED range
             Remember to change the city-level loops to accommodate all cities
             Remember to uncomment all state abbreviations
             '''
+            print('capHigh_Detached_cooling: ', capHigh_Detached_cooling)
+            print('capLow_Detached_cooling: ', capLow_Detached_cooling)
+            print('capLow_Detached_heating: ', capLow_Detached_heating)
+            print('capHigh_Detached_heating: ', capHigh_Detached_heating)
             # np.savetxt("pWorkBaseWinter_python.csv", comLoadBaseWinter, delimiter=",")
             print('hpSizeAttached_Summer: ', hpSizeAttached_Summer)
             print('hpSizeDetached_Summer: ', hpSizeDetached_Summer)
             print('hpSizeAttached_Winter: ', hpSizeAttached_Winter)
             print('hpSizeDetached_Winter: ', hpSizeDetached_Winter)
+            print('hpSizeAttached: ', hpSizeAttached)
+            print('hpSizeDetached: ', hpSizeDetached)
             #endregion
             
             # Compile results into dataTable

@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
+from pathlib import Path
+from functools import lru_cache
+from scipy.interpolate import interp1d
 rng = np.random.default_rng(1)
 
 def btu2wh(x):
@@ -51,7 +54,8 @@ def trirnd(a, c, m, n):
         numpy.ndarray: An (m, n) matrix of random floating-point values 
             drawn from the specified triangular distribution.
     """
-    return rng.triangular(a, (a + c) / 2.0, c, size=(m, n))
+    #return rng.triangular(a, (a + c) / 2.0, c, size=(m, n))
+    return np.full((m, n), a, dtype=float)
 
 def interpLinear(data):
     value_cols = data.columns 
@@ -346,7 +350,7 @@ def sizeHeatPump(mode, houseType,  resLoadYear, numHomes, weatherData, designTem
         thetaLow = f2c(82)
         thetaHigh = f2c(95)
     elif mode == 'heating':
-        designTemp = weatherData['temperature'].min()
+        # designTemp = weatherData['temperature'].min()
         thetaLow = f2c(5)
         thetaHigh = f2c(45)
 
@@ -387,3 +391,86 @@ def chooseHpSize(sizing, hpHeating, hpCooling):
         return hpHeating, 'heating'
     elif sizing == 3:
         return (hpHeating, 'heating') if hpHeating > hpCooling else (hpCooling, 'cooling')
+
+def hvac_files(mode):
+    # 2ton has no 'C' variant
+    return [
+        f"{ton}ton_{t}_{mode}.csv"
+        for ton in range(2, 9)
+        for t in "CRT"
+        if not (ton == 2 and t == "C")
+    ]
+@lru_cache(maxsize=None)
+def _load_curve(path):
+    """Read a CSV once; return (temp_C, capacity_Wh). Treat result as read-only."""
+    tbl = pd.read_csv(path)
+    if tbl.shape[1] < 2:
+        raise ValueError(f"{path} has fewer than 2 columns")
+    return f2c(tbl.iloc[:, 0].to_numpy()), btu2wh(tbl.iloc[:, 1].to_numpy())
+
+
+def selectBestHvac(mode, x_target, y_target, data_dir="."):
+    """
+    Select the unit whose linear capacity curve (in the given mode) passes
+    closest to (x_target [degC], y_target [Wh]). Then return capacities for
+    that same unit in both modes.
+
+    mode: "heating" or "cooling" (the mode that drives the selection)
+
+    Returns: cooling_val_95F, cooling_val_82F, heating_val_5F, heating_val_45F
+    """
+    mode = mode.lower()
+    if mode not in ("heating", "cooling"):
+        raise ValueError("mode must be 'heating' or 'cooling'")
+    other = "cooling" if mode == "heating" else "heating"
+    data_dir = Path(data_dir)
+
+    # The original heating selector fits only 5-48 F; the cooling selector
+    # fits all rows. Preserved here.
+    window = (f2c(5), f2c(48)) if mode == "heating" else None
+
+    # --- SELECTION in the driving mode ---
+    best_error, best_file, best_coeffs = np.inf, None, None
+
+    for filename in hvac_files(mode):
+        try:
+            x, y = _load_curve(str(data_dir / filename))
+            if window is not None:
+                mask = (x >= window[0]) & (x <= window[1])
+                x, y = x[mask], y[mask]
+            if len(x) < 2:
+                continue
+
+            coeffs = np.polyfit(x, y, 1)
+            error = abs(np.polyval(coeffs, x_target) - y_target)
+
+            if error < best_error:
+                best_error, best_file, best_coeffs = error, filename, coeffs
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+
+    if best_coeffs is None:
+        raise RuntimeError(f"No valid {mode} data found.")
+
+    # --- Lookup in the other mode (same unit) via interpolation ---
+    other_file = best_file.replace(f"_{mode}.csv", f"_{other}.csv")
+    try:
+        x, y = _load_curve(str(data_dir / other_file))
+    except Exception as e:
+        raise RuntimeError(f"Error loading {other} data for {other_file}: {e}")
+
+    interp = interp1d(x, y, kind="linear", fill_value="extrapolate")
+
+    # --- Assemble outputs ---
+    if mode == "heating":
+        heating_5F = float(np.polyval(best_coeffs, f2c(5)))
+        heating_45F = float(np.polyval(best_coeffs, f2c(45)))
+        cooling_82F = float(interp(f2c(82)))
+        cooling_95F = float(interp(f2c(95)))
+    else:
+        cooling_82F = float(np.polyval(best_coeffs, f2c(82)))
+        cooling_95F = float(np.polyval(best_coeffs, f2c(95)))
+        heating_5F = float(interp(f2c(5)))
+        heating_45F = float(interp(f2c(45)))
+
+    return cooling_95F, cooling_82F, heating_5F, heating_45F
