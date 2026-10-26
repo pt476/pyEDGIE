@@ -1,3 +1,4 @@
+from EDGIEmain import DETERMINISTIC
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -54,8 +55,10 @@ def trirnd(a, c, m, n):
         numpy.ndarray: An (m, n) matrix of random floating-point values 
             drawn from the specified triangular distribution.
     """
-    #return rng.triangular(a, (a + c) / 2.0, c, size=(m, n))
-    return np.full((m, n), a, dtype=float)
+    if DETERMINISTIC:
+        return np.full((m, n), a, dtype=float)
+    else:
+        return rng.triangular(a, (a + c) / 2.0, c, size=(m, n))
 
 def interpLinear(data):
     value_cols = data.columns 

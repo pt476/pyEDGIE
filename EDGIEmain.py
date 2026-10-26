@@ -1,3 +1,6 @@
+# DEBUG MODES
+DETERMINISTIC = True
+
 import os
 import time
 import numpy as np
@@ -122,7 +125,8 @@ def main():
         cityData = metaData[metaData["state_id"].str.upper() == stateAbbr].copy() # Extract data for current state
         
         #for city in cityData.itertuples(): 
-        for city in cityData.iloc[26:27].itertuples():    # debug line to test Minneapolis
+        #for city in cityData.iloc[26:27].itertuples():    # debug line to test Minneapolis
+        for city in cityData.iloc[0:1].itertuples():       # debug line to test Aitkin
 
             #region Get city-specific data 
             # Retiming is done within loadCityData()
@@ -173,21 +177,21 @@ def main():
 
             (capLow_Attached_cooling, capHigh_Attached_cooling, capLow_Attached_heating, capHigh_Attached_heating) = selectBestHvac(modeAtt, city.heatingTemp if modeAtt == 'heating' else city.coolingTemp, hpSizeAttached, "InputFiles_github")
             (capLow_Detached_cooling, capHigh_Detached_cooling, capLow_Detached_heating, capHigh_Detached_heating) = selectBestHvac(modeDet, city.heatingTemp if modeDet == 'heating' else city.coolingTemp, hpSizeDetached, "InputFiles_github")
-
-            #
             #endregion
             
-            #region Select best HVAC system
+            #region Generate water heater parameters
 
             #endregion
 
             #region DEBUG LINES
             '''
-            NOTE change trirnd to be random again
+            NOTE MAKE TRIRND NON-DETERMINISTIC
+            NOTE REMOVE HP SIZING LOOP
             Verify if buildResidentialLoad() can be moved from city-level loops to outside the loops
             Remember to change buildResidentialLoad() to sample from the full MFRED range
             Remember to change the city-level loops to accommodate all cities
             Remember to uncomment all state abbreviations
+            Try to load HVAC curves once at the start
             '''
             print('capHigh_Detached_cooling: ', capHigh_Detached_cooling)
             print('capLow_Detached_cooling: ', capLow_Detached_cooling)
@@ -200,6 +204,7 @@ def main():
             print('hpSizeDetached_Winter: ', hpSizeDetached_Winter)
             print('hpSizeAttached: ', hpSizeAttached)
             print('hpSizeDetached: ', hpSizeDetached)
+            print(city.coolingTemp)
             #endregion
             
             # Compile results into dataTable
