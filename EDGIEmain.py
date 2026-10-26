@@ -1,5 +1,4 @@
-# DEBUG MODES
-DETERMINISTIC = True
+from config import HP_SIZING_LOOP
 
 import os
 import time
@@ -166,10 +165,10 @@ def main():
 
             #region Residential Heat Pump Sizing
             # Find peak HP requirements for each extreme season
-            hpSizeAttached_Summer = sizeHeatPump('cooling', 'att', resLoadYear, numHomes, weatherData, city.coolingTemp, floorAreaAttached_mean, RvalueAttached_mean)
-            hpSizeDetached_Summer = sizeHeatPump('cooling', 'det', resLoadYear, numHomes, weatherData, city.coolingTemp, floorAreaDetached_mean, RValueDetached_mean)
-            hpSizeAttached_Winter = sizeHeatPump('heating', 'att', resLoadYear, numHomes, weatherData, city.heatingTemp, floorAreaAttached_mean, RvalueAttached_mean)
-            hpSizeDetached_Winter = sizeHeatPump('heating', 'det', resLoadYear, numHomes, weatherData, city.heatingTemp, floorAreaDetached_mean, RValueDetached_mean)
+            hpSizeAttached_Summer = sizeHeatPump('cooling', 'att', resLoadYear, numHomes, weatherData, city.coolingTemp if HP_SIZING_LOOP == False else cityData["coolingTemp"].iloc[-1], floorAreaAttached_mean, RvalueAttached_mean)
+            hpSizeDetached_Summer = sizeHeatPump('cooling', 'det', resLoadYear, numHomes, weatherData, city.coolingTemp if HP_SIZING_LOOP == False else cityData["coolingTemp"].iloc[-1], floorAreaDetached_mean, RValueDetached_mean)
+            hpSizeAttached_Winter = sizeHeatPump('heating', 'att', resLoadYear, numHomes, weatherData, city.heatingTemp if HP_SIZING_LOOP == False else cityData["heatingTemp"].iloc[-1], floorAreaAttached_mean, RvalueAttached_mean)
+            hpSizeDetached_Winter = sizeHeatPump('heating', 'det', resLoadYear, numHomes, weatherData, city.heatingTemp if HP_SIZING_LOOP == False else cityData["heatingTemp"].iloc[-1], floorAreaDetached_mean, RValueDetached_mean)
 
             # Find the largest required HP power size between Winter and Summer months for Attached/Detached houses
             hpSizeAttached, modeAtt = chooseHpSize(sizing, hpSizeAttached_Winter, hpSizeAttached_Summer)
@@ -204,7 +203,6 @@ def main():
             print('hpSizeDetached_Winter: ', hpSizeDetached_Winter)
             print('hpSizeAttached: ', hpSizeAttached)
             print('hpSizeDetached: ', hpSizeDetached)
-            print(city.coolingTemp)
             #endregion
             
             # Compile results into dataTable
